@@ -320,19 +320,22 @@ class AliDnsDDNS(_PluginBase):
         history = sorted(history, key=lambda x: x.get("update_time", ""), reverse=True)
 
         return [{
-            "component": "VDataTable",
+            "component": "VDataTableVirtual",
             "props": {
+                "class": "text-sm",
                 "headers": [
                     {"title": "域名",     "key": "fqdn",        "sortable": True},
-                    {"title": "类型",     "key": "type",        "sortable": True,  "width": "80px"},
+                    {"title": "类型",     "key": "type",        "sortable": True},
                     {"title": "IP 地址",  "key": "ip",          "sortable": False},
-                    {"title": "状态",     "key": "status",      "sortable": True,  "width": "90px"},
+                    {"title": "状态",     "key": "status",      "sortable": True},
                     {"title": "检测时间", "key": "update_time", "sortable": True},
                 ],
                 "items": history,
-                "density": "comfortable",
+                "height": "30rem",
+                "density": "compact",
+                "fixed-header": True,
+                "hide-no-data": True,
                 "hover": True,
-                "items-per-page": 20,
             },
         }]
 
