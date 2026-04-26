@@ -148,11 +148,12 @@ class AliDnsDDNS(_PluginBase):
     # ──────────────────────────────────────────────
 
     def __api_history(self) -> List[dict]:
-        return self.get_data("history") or []
+        current = self.get_data("current") or {}
+        return list(current.values())
 
     def __api_clear_history(self) -> dict:
-        self.del_data("history")
-        logger.info("[AliDnsDDNS] 更新历史已清空")
+        self.del_data("current")
+        logger.info("[AliDnsDDNS] 当前状态数据已清空")
         return {"success": True}
 
     # ──────────────────────────────────────────────
@@ -308,7 +309,8 @@ class AliDnsDDNS(_PluginBase):
     # ──────────────────────────────────────────────
 
     def get_page(self) -> List[dict]:
-        history: List[dict] = self.get_data("history") or []
+        # current 是 dict，key = "fqdn|type"，value = 最新状态
+        history: dict = self.get_data("current") or {}
 
         if not history:
             return [{
@@ -317,8 +319,6 @@ class AliDnsDDNS(_PluginBase):
                 "text": "暂无更新记录",
             }]
 
-        history = sorted(history, key=lambda x: x.get("update_time", ""), reverse=True)
-
         return [{
             "component": "VDataTableVirtual",
             "props": {
@@ -326,11 +326,11 @@ class AliDnsDDNS(_PluginBase):
                 "headers": [
                     {"title": "域名",     "key": "fqdn",        "sortable": True},
                     {"title": "类型",     "key": "type",        "sortable": True},
-                    {"title": "IP 地址",  "key": "ip",          "sortable": False},
+                    {"title": "当前 IP",  "key": "ip",          "sortable": False},
                     {"title": "状态",     "key": "status",      "sortable": True},
                     {"title": "检测时间", "key": "update_time", "sortable": True},
                 ],
-                "items": history,
+                "items": list(history.values()),
                 "height": "30rem",
                 "density": "compact",
                 "fixed-header": True,
@@ -398,17 +398,19 @@ class AliDnsDDNS(_PluginBase):
         if ipv6:
             self._last_ipv6 = ipv6
 
-        # 每次运行都保存历史（无论是否有变更）
+        # 保存每条记录的最新状态（覆盖旧值）
         if all_checked:
-            self.__save_history(all_checked)
+            self.__save_current(all_checked)
 
         if updated and self._notify:
             self.__send_notify(updated)
 
-    def __save_history(self, new_items: List[dict]):
-        history: List[dict] = self.get_data("history") or []
-        history = (new_items + history)[:_MAX_HISTORY]
-        self.save_data("history", history)
+    def __save_current(self, items: List[dict]):
+        current: dict = self.get_data("current") or {}
+        for item in items:
+            key = f"{item['fqdn']}|{item['type']}"
+            current[key] = item
+        self.save_data("current", current)
 
     def __send_notify(self, updated: List[dict]):
         blocks = []
