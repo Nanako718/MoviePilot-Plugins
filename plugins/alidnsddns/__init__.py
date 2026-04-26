@@ -326,7 +326,8 @@ class AliDnsDDNS(_PluginBase):
                     {"title": "域名",     "key": "fqdn",        "sortable": True},
                     {"title": "类型",     "key": "type",        "sortable": True,  "width": "80px"},
                     {"title": "IP 地址",  "key": "ip",          "sortable": False},
-                    {"title": "更新时间", "key": "update_time", "sortable": True},
+                    {"title": "状态",     "key": "status",      "sortable": True,  "width": "90px"},
+                    {"title": "检测时间", "key": "update_time", "sortable": True},
                 ],
                 "items": history,
                 "density": "comfortable",
@@ -363,7 +364,8 @@ class AliDnsDDNS(_PluginBase):
             return
 
         client   = _AliDnsClient(self._access_key_id, self._access_key_secret)
-        updated: List[dict] = []
+        all_checked: List[dict] = []   # 所有检查过的记录（无论是否变化）
+        updated:     List[dict] = []   # 仅本次有实际变更的记录（用于通知）
         now_str  = datetime.now(tz=pytz.timezone(settings.TZ)).strftime("%Y-%m-%d %H:%M:%S")
 
         for rec in parsed:
@@ -371,32 +373,33 @@ class AliDnsDDNS(_PluginBase):
             fqdn = _fqdn(rec["rr"], rec["domain"])
             try:
                 changed = client.upsert(rec["domain"], rec["rr"], rec["type"], ip)
+                status  = "已更新" if changed else "无变化"
+                all_checked.append({
+                    "fqdn": fqdn, "type": rec["type"],
+                    "ip": ip, "status": status, "update_time": now_str,
+                })
                 if changed:
-                    updated.append({"fqdn": fqdn, "type": rec["type"],
-                                    "ip": ip, "update_time": now_str})
-                    logger.info(
-                        f"[AliDnsDDNS] 记录已更新 | {fqdn} | {rec['type']} | {ip}"
-                    )
+                    updated.append(all_checked[-1])
+                    logger.info(f"[AliDnsDDNS] 记录已更新 | {fqdn} | {rec['type']} | {ip}")
                 else:
-                    logger.debug(
-                        f"[AliDnsDDNS] 记录无变化 | {fqdn} | {rec['type']} | {ip}"
-                    )
+                    logger.debug(f"[AliDnsDDNS] 记录无变化 | {fqdn} | {rec['type']} | {ip}")
             except Exception as e:
-                logger.error(
-                    f"[AliDnsDDNS] 记录更新失败 | {fqdn} | {rec['type']} | 原因: {e}"
-                )
+                all_checked.append({
+                    "fqdn": fqdn, "type": rec["type"],
+                    "ip": ip, "status": "失败", "update_time": now_str,
+                })
+                logger.error(f"[AliDnsDDNS] 记录更新失败 | {fqdn} | {rec['type']} | 原因: {e}")
 
         if ipv4:
             self._last_ipv4 = ipv4
         if ipv6:
             self._last_ipv6 = ipv6
 
-        if not updated:
-            return
+        # 每次运行都保存历史（无论是否有变更）
+        if all_checked:
+            self.__save_history(all_checked)
 
-        self.__save_history(updated)
-
-        if self._notify:
+        if updated and self._notify:
             self.__send_notify(updated)
 
     def __save_history(self, new_items: List[dict]):
